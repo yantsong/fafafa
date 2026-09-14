@@ -1,183 +1,124 @@
-import datetime
-import threading
 import tkinter as tk
-from tkinter import messagebox, scrolledtext, ttk
-from typing import Optional
-
-import serial
-import ch9329Comm
+from tkinter import messagebox
 
 
-DEFAULT_COM_PORT = "COM4"
-DEFAULT_BAUDRATE = 115200
-DEFAULT_SCREEN_WIDTH = 1920
-DEFAULT_SCREEN_HEIGHT = 1080
+BG_COLOR = "#000000"
+LABEL_COLOR = "#ffffff"
+ENTRY_BG = "#ffffff"
+ENTRY_FG = "#000000"
+ENTRY_BORDER = "#ffffff"
+BUTTON_BG = "#ffffff"
+BUTTON_FG = "#000000"
+FONT = ("Microsoft YaHei UI", 11)
+TITLE_FONT = ("Microsoft YaHei UI", 16, "bold")
 
 
-class CH9329MouseApp:
+class CH9329App:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
-        self.root.title("CH9329 鼠标控制")
-        self.root.geometry("520x480")
-        self.root.minsize(480, 420)
-
-        self.serial_conn: Optional[serial.Serial] = None
-        self.mouse: Optional[ch9329Comm.mouse.DataComm] = None
+        self.root.title("CH9329 控制")
+        self.root.geometry("360x420")
+        self.root.resizable(False, False)
+        self.root.configure(bg=BG_COLOR)
 
         self._build_ui()
-        self.log("程序已启动，请先连接 CH9329 设备")
+        self._center_window()
+
+    def _center_window(self) -> None:
+        self.root.update_idletasks()
+        width = self.root.winfo_width()
+        height = self.root.winfo_height()
+        x = (self.root.winfo_screenwidth() - width) // 2
+        y = (self.root.winfo_screenheight() - height) // 2
+        self.root.geometry(f"{width}x{height}+{x}+{y}")
 
     def _build_ui(self) -> None:
-        config_frame = ttk.LabelFrame(self.root, text="设备配置", padding=10)
-        config_frame.pack(fill=tk.X, padx=10, pady=(10, 6))
+        container = tk.Frame(self.root, bg=BG_COLOR, padx=40, pady=40)
+        container.pack(fill=tk.BOTH, expand=True)
 
-        ttk.Label(config_frame, text="串口:").grid(row=0, column=0, sticky=tk.W, padx=(0, 6))
-        self.com_var = tk.StringVar(value=DEFAULT_COM_PORT)
-        ttk.Entry(config_frame, textvariable=self.com_var, width=10).grid(row=0, column=1, sticky=tk.W)
+        tk.Label(
+            container,
+            text="CH9329 控制",
+            bg=BG_COLOR,
+            fg=LABEL_COLOR,
+            font=TITLE_FONT,
+        ).pack(anchor=tk.W, pady=(0, 30))
 
-        ttk.Label(config_frame, text="屏幕宽:").grid(row=0, column=2, sticky=tk.W, padx=(16, 6))
-        self.width_var = tk.StringVar(value=str(DEFAULT_SCREEN_WIDTH))
-        ttk.Entry(config_frame, textvariable=self.width_var, width=8).grid(row=0, column=3, sticky=tk.W)
+        self.com_var = tk.StringVar(value="COM4")
+        self._add_field(container, "COM 口", self.com_var)
 
-        ttk.Label(config_frame, text="屏幕高:").grid(row=0, column=4, sticky=tk.W, padx=(16, 6))
-        self.height_var = tk.StringVar(value=str(DEFAULT_SCREEN_HEIGHT))
-        ttk.Entry(config_frame, textvariable=self.height_var, width=8).grid(row=0, column=5, sticky=tk.W)
-
-        self.connect_btn = ttk.Button(config_frame, text="连接", command=self.toggle_connection)
-        self.connect_btn.grid(row=0, column=6, padx=(16, 0))
-
-        coord_frame = ttk.LabelFrame(self.root, text="坐标输入", padding=10)
-        coord_frame.pack(fill=tk.X, padx=10, pady=6)
-
-        ttk.Label(coord_frame, text="X:").grid(row=0, column=0, sticky=tk.W, padx=(0, 6))
         self.x_var = tk.StringVar()
-        self.x_entry = ttk.Entry(coord_frame, textvariable=self.x_var, width=12)
-        self.x_entry.grid(row=0, column=1, sticky=tk.W)
+        self._add_field(container, "X 坐标", self.x_var)
 
-        ttk.Label(coord_frame, text="Y:").grid(row=0, column=2, sticky=tk.W, padx=(16, 6))
         self.y_var = tk.StringVar()
-        self.y_entry = ttk.Entry(coord_frame, textvariable=self.y_var, width=12)
-        self.y_entry.grid(row=0, column=3, sticky=tk.W)
+        self._add_field(container, "Y 坐标", self.y_var)
 
-        self.confirm_btn = ttk.Button(coord_frame, text="确认", command=self.on_confirm, state=tk.DISABLED)
-        self.confirm_btn.grid(row=0, column=4, padx=(16, 0))
+        tk.Button(
+            container,
+            text="确认",
+            bg=BUTTON_BG,
+            fg=BUTTON_FG,
+            activebackground="#dddddd",
+            activeforeground=BUTTON_FG,
+            relief=tk.FLAT,
+            font=FONT,
+            cursor="hand2",
+            command=self.on_submit,
+        ).pack(fill=tk.X, pady=(20, 0), ipady=8)
 
-        log_frame = ttk.LabelFrame(self.root, text="日志", padding=10)
-        log_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=(6, 10))
+    def _add_field(self, parent: tk.Frame, label: str, variable: tk.StringVar) -> None:
+        tk.Label(
+            parent,
+            text=label,
+            bg=BG_COLOR,
+            fg=LABEL_COLOR,
+            font=FONT,
+            anchor=tk.W,
+        ).pack(fill=tk.X, pady=(0, 6))
 
-        self.log_text = scrolledtext.ScrolledText(log_frame, height=16, state=tk.DISABLED, wrap=tk.WORD)
-        self.log_text.pack(fill=tk.BOTH, expand=True)
+        border = tk.Frame(parent, bg=ENTRY_BORDER, padx=2, pady=2)
+        border.pack(fill=tk.X, pady=(0, 16))
 
-    def log(self, message: str) -> None:
-        timestamp = datetime.datetime.now().strftime("%H:%M:%S")
-        line = f"[{timestamp}] {message}\n"
+        entry = tk.Entry(
+            border,
+            textvariable=variable,
+            bg=ENTRY_BG,
+            fg=ENTRY_FG,
+            insertbackground=ENTRY_FG,
+            relief=tk.FLAT,
+            bd=0,
+            font=FONT,
+        )
+        entry.pack(fill=tk.X, ipady=10)
 
-        def append() -> None:
-            self.log_text.configure(state=tk.NORMAL)
-            self.log_text.insert(tk.END, line)
-            self.log_text.see(tk.END)
-            self.log_text.configure(state=tk.DISABLED)
-
-        self.root.after(0, append)
-
-    def toggle_connection(self) -> None:
-        if self.serial_conn and self.serial_conn.is_open:
-            self.disconnect()
-            return
-        self.connect()
-
-    def connect(self) -> None:
+    def on_submit(self) -> None:
         com_port = self.com_var.get().strip()
+        x_text = self.x_var.get().strip()
+        y_text = self.y_var.get().strip()
+
         if not com_port:
-            messagebox.showerror("错误", "请输入串口号，例如 COM4")
+            messagebox.showwarning("提示", "请输入 COM 口")
+            return
+        if not x_text or not y_text:
+            messagebox.showwarning("提示", "请输入 X 和 Y 坐标")
             return
 
         try:
-            screen_width = int(self.width_var.get().strip())
-            screen_height = int(self.height_var.get().strip())
-            if screen_width <= 0 or screen_height <= 0:
-                raise ValueError
+            x = int(x_text)
+            y = int(y_text)
         except ValueError:
-            messagebox.showerror("错误", "屏幕宽高必须为正整数")
+            messagebox.showwarning("提示", "X 和 Y 坐标必须为整数")
             return
 
-        try:
-            self.serial_conn = serial.Serial(com_port, DEFAULT_BAUDRATE, timeout=0.5)
-            serial.ser = self.serial_conn
-            self.mouse = ch9329Comm.mouse.DataComm(screen_width, screen_height)
-        except serial.SerialException as exc:
-            self.serial_conn = None
-            self.mouse = None
-            self.log(f"连接失败: {exc}")
-            messagebox.showerror("连接失败", str(exc))
-            return
-
-        self.connect_btn.configure(text="断开")
-        self.confirm_btn.configure(state=tk.NORMAL)
-        self.log(f"已连接 {com_port}，波特率 {DEFAULT_BAUDRATE}，分辨率 {screen_width}x{screen_height}")
-
-    def disconnect(self) -> None:
-        if self.serial_conn and self.serial_conn.is_open:
-            self.serial_conn.close()
-        self.serial_conn = None
-        self.mouse = None
-
-        self.connect_btn.configure(text="连接")
-        self.confirm_btn.configure(state=tk.DISABLED)
-        self.log("已断开连接")
-
-    def on_confirm(self) -> None:
-        if not self.mouse or not self.serial_conn or not self.serial_conn.is_open:
-            messagebox.showerror("错误", "请先连接 CH9329 设备")
-            return
-
-        try:
-            x = int(self.x_var.get().strip())
-            y = int(self.y_var.get().strip())
-        except ValueError:
-            messagebox.showerror("错误", "X 和 Y 必须为整数")
-            return
-
-        screen_width = self.mouse.X_MAX
-        screen_height = self.mouse.Y_MAX
-        if not (0 <= x <= screen_width and 0 <= y <= screen_height):
-            messagebox.showerror(
-                "错误",
-                f"坐标超出屏幕范围 (0~{screen_width}, 0~{screen_height})",
-            )
-            return
-
-        self.confirm_btn.configure(state=tk.DISABLED)
-        self.log(f"开始执行: 移动到 ({x}, {y}) 并单击左键")
-
-        thread = threading.Thread(target=self._move_and_click, args=(x, y), daemon=True)
-        thread.start()
-
-    def _move_and_click(self, x: int, y: int) -> None:
-        try:
-            assert self.mouse is not None
-            moved = self.mouse.send_data_absolute(x, y)
-            if not moved:
-                raise RuntimeError("鼠标移动指令发送失败")
-
-            self.log(f"已移动到 ({x}, {y})")
-            self.mouse.click()
-            self.log("已单击鼠标左键")
-        except Exception as exc:
-            self.log(f"执行失败: {exc}")
-            self.root.after(0, lambda: messagebox.showerror("执行失败", str(exc)))
-        finally:
-            self.root.after(0, lambda: self.confirm_btn.configure(state=tk.NORMAL))
-
-    def on_close(self) -> None:
-        self.disconnect()
-        self.root.destroy()
+        messagebox.showinfo(
+            "输入内容",
+            f"COM 口: {com_port}\nX: {x}\nY: {y}",
+        )
 
 
 def main() -> None:
     root = tk.Tk()
-    app = CH9329MouseApp(root)
-    root.protocol("WM_DELETE_WINDOW", app.on_close)
+    CH9329App(root)
     root.mainloop()
 
 
