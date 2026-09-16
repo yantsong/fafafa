@@ -10,12 +10,15 @@ from __future__ import annotations
 import json
 import os
 import queue
+import socket
 import tkinter as tk
 import tkinter.font as tkfont
 from tkinter import messagebox
 
 from tcp_server import ActionServer
 from protocol import DEFAULT_PORT
+
+BAUDRATE = 115200  # CH9329 固定波特率
 
 BG_COLOR = "#1e1e1e"
 PANEL_COLOR = "#2b2b2b"
@@ -37,6 +40,35 @@ STATUS_TEXT = {
 }
 
 
+def get_local_ips() -> list[str]:
+    """枚举本机所有网卡的局域网 IPv4（不依赖外网，排除回环/链路本地地址）。
+
+    B 机可能有多个网卡（有线/无线/uu 等虚拟网卡），A 机能连的是与 A
+    同网段的那个，因此全部列出，由用户选择填入 A 机控制端。
+    """
+    ips: list[str] = []
+    try:
+        for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+            ip = info[4][0]
+            if ip.startswith("127.") or ip.startswith("169.254."):
+                continue
+            if ip not in ips:
+                ips.append(ip)
+    except OSError:
+        pass
+    if not ips:
+        # 兜底：UDP 路由探测（需要能路由到外网，不实际发包）
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            s.connect(("8.8.8.8", 80))
+            ips.append(s.getsockname()[0])
+        except OSError:
+            ips.append("127.0.0.1")
+        finally:
+            s.close()
+    return ips
+
+
 def get_font(size: int = 11, bold: bool = False) -> tuple:
     preferred = ["Microsoft YaHei UI", "PingFang SC", "Segoe UI", "Arial"]
     available = set(tkfont.families())
@@ -47,7 +79,7 @@ def get_font(size: int = 11, bold: bool = False) -> tuple:
 
 
 def load_config() -> dict:
-    defaults = {"com_port": "COM3", "baudrate": 115200, "tcp_port": DEFAULT_PORT}
+    defaults = {"com_port": "COM3", "tcp_port": DEFAULT_PORT}
     if os.path.exists(CONFIG_PATH):
         try:
             with open(CONFIG_PATH, "r", encoding="utf-8") as f:
@@ -70,7 +102,6 @@ class AgentBApp:
 
         cfg = load_config()
         self.com_var = tk.StringVar(value=cfg["com_port"])
-        self.baud_var = tk.StringVar(value=str(cfg["baudrate"]))
         self.port_var = tk.StringVar(value=str(cfg["tcp_port"]))
 
         # 后台线程 -> UI 线程的消息队列：("log", text) / ("status", state)
@@ -98,8 +129,12 @@ class AgentBApp:
         body.pack(fill=tk.BOTH, expand=True)
 
         self._field(body, "CH9329 串口", self.com_var, "例如 COM3")
-        self._field(body, "波特率", self.baud_var, "115200")
         self._field(body, "TCP 监听端口", self.port_var, str(DEFAULT_PORT))
+
+        # 本机所有网卡的网络 IP：A 机控制端填与 A 同网段的那个
+        tk.Label(body, text=f"本机网络 IP：{' / '.join(get_local_ips())}（A 机控制端填这个）",
+                 bg=BG_COLOR, fg="#f1c40f", font=self.font, wraplength=380,
+                 justify=tk.LEFT, anchor=tk.W).pack(fill=tk.X, pady=(0, 12))
 
         self.toggle_btn = tk.Button(
             body, text="启动服务", font=self.font, bg=BUTTON_BG, fg=BUTTON_FG,
@@ -163,19 +198,18 @@ class AgentBApp:
             return
 
         try:
-            baud = int(self.baud_var.get().strip())
             tcp_port = int(self.port_var.get().strip())
         except ValueError:
-            messagebox.showwarning("提示", "波特率和 TCP 端口必须是整数")
+            messagebox.showwarning("提示", "TCP 端口必须是整数")
             return
         com = self.com_var.get().strip()
         if not com:
             messagebox.showwarning("提示", "请填写串口号")
             return
 
-        self._save_config(com, baud, tcp_port)
+        self._save_config(com, tcp_port)
         self.server = ActionServer(
-            port=tcp_port, com_port=com, baudrate=baud,
+            port=tcp_port, com_port=com, baudrate=BAUDRATE,
             log=lambda m: self.ui_queue.put(("log", m)),
             status=lambda s: self.ui_queue.put(("status", s)),
         )
@@ -190,11 +224,11 @@ class AgentBApp:
                 if isinstance(widget, tk.Entry):
                     widget.configure(state=state)
 
-    def _save_config(self, com: str, baud: int, tcp_port: int) -> None:
+    def _save_config(self, com: str, tcp_port: int) -> None:
         try:
             with open(CONFIG_PATH, "w", encoding="utf-8") as f:
-                json.dump({"com_port": com, "baudrate": baud,
-                           "tcp_port": tcp_port}, f, ensure_ascii=False, indent=2)
+                json.dump({"com_port": com, "tcp_port": tcp_port},
+                          f, ensure_ascii=False, indent=2)
         except OSError:
             pass
 
