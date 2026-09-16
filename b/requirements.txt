@@ -1,0 +1,2 @@
+ch9329Comm>=1.0.9
+pyserial>=3.5
