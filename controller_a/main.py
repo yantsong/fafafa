@@ -183,7 +183,10 @@ class ControllerApp:
                 self.client = client
                 self.root.after(0, lambda: self._on_connected(host, port))
             except (OSError, ActionError) as exc:
-                self.root.after(0, lambda: self._on_connect_failed(exc))
+                # except 块退出时 Python 会删除 exc，lambda 延迟执行会 NameError，
+                # 必须先绑定到普通局部变量
+                err = exc
+                self.root.after(0, lambda: self._on_connect_failed(err))
 
         threading.Thread(target=_work, daemon=True).start()
 

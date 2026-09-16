@@ -24,7 +24,7 @@ import numpy as np
 CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
 
 DEFAULT_CONFIG: dict = {
-    "agent": {"host": "192.168.1.100", "port": 5093},
+    "agent": {"host": "10.219.18.34", "port": 5093},
     "b_screen": {"width": 1920, "height": 1080},
     "capture": {"left": 0, "top": 0, "width": 0, "height": 0},
 }
