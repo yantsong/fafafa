@@ -1,0 +1,4 @@
+ch9329Comm>=1.0.9
+pyserial>=3.5
+pyautogui>=0.9.54
+windmouse>=1.0

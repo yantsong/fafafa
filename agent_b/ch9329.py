@@ -29,6 +29,48 @@ LogFn = Callable[[str], None]
 
 
 # ════════════════════════════════════════════════════════════════
+# 串口辅助
+# 本模块只运行在电脑 B（Windows）上，pyautogui.position() 读到的就是
+# B 的真实指针，无需跨机指针跟踪。
+# ════════════════════════════════════════════════════════════════
+
+def _open_serial(com_port: str, baudrate: int, timeout: float = 1.0):
+    """打开串口并挂到 serial 模块全局（ch9329Comm 默认读写 serial.ser）。"""
+    s = serial.Serial(com_port, baudrate, timeout=timeout, write_timeout=None)
+    serial.ser = s
+    return s
+
+
+def _close_serial(log: LogFn | None = None) -> None:
+    s = getattr(serial, "ser", None)
+    if s is not None and s.is_open:
+        s.close()
+        _emit("[S] 串口已关闭", log)
+
+
+def _send_trajectory(
+    mouse: "ch9329Comm.mouse.DataComm",
+    points: list[tuple[int, int]],
+    screen_w: int,
+    screen_h: int,
+    is_long: bool,
+) -> None:
+    """逐点发送绝对坐标，含拟人发包间隔与长距离中途微停顿。"""
+    for i, (px, py) in enumerate(points):
+        px = max(0, min(screen_w - 1, px))
+        py = max(0, min(screen_h - 1, py))
+        mouse.send_data_absolute(px, py)
+
+        interval = random.gauss(HID_INTERVAL_MEAN, HID_INTERVAL_SIGMA)
+        interval = max(HID_INTERVAL_MIN, interval)
+
+        if is_long and 0 < i < len(points) - 1 and random.random() < PAUSE_PROBABILITY:
+            interval += random.uniform(*PAUSE_DURATION_RANGE)
+
+        time.sleep(interval)
+
+
+# ════════════════════════════════════════════════════════════════
 # 可配置参数（所有值均为 uniform(min, max) 的随机区间）
 # ════════════════════════════════════════════════════════════════
 
@@ -90,7 +132,11 @@ PULL_DAMPED_DIST_RANGE = (8.0, 15.0)
 
 
 def _emit(message: str, log: LogFn | None) -> None:
-    print(message, flush=True)
+    # Windows 控制台默认 GBK，中文可能抛 UnicodeEncodeError；打印失败不应影响动作执行
+    try:
+        print(message, flush=True)
+    except UnicodeEncodeError:
+        pass
     if log is not None:
         log(message)
 
@@ -180,6 +226,15 @@ def _generate_trajectory(
     return points
 
 
+# ── 单击节奏 ──
+# 到位后到按下之间的停顿（模拟人手确认）
+CLICK_PRE_DELAY_RANGE = (0.08, 0.20)
+# 按下到抬起的时长
+CLICK_HOLD_RANGE = (0.06, 0.12)
+# 抬起之后的收尾停顿
+CLICK_POST_DELAY_RANGE = (0.10, 0.30)
+
+
 # ──────────────────────────────────────────────
 # 主入口
 # ──────────────────────────────────────────────
@@ -201,9 +256,8 @@ def move_to_target_humanlike(
     """
     pyautogui.FAILSAFE = False
     _emit(f"[1] 打开串口 port={com_port} baudrate={baudrate}", log)
-    serial.ser = serial.Serial(com_port, baudrate, timeout=timeout, write_timeout=None)
+    ser = _open_serial(com_port, baudrate, timeout)
     try:
-        ser = serial.ser
         _emit(f"[2] 串口已打开 is_open={ser.is_open}", log)
 
         start_x, start_y = pyautogui.position()
@@ -220,28 +274,55 @@ def move_to_target_humanlike(
         _emit(f"[4] WindMouse 轨迹点={len(points)}", log)
 
         mouse = ch9329Comm.mouse.DataComm(screen_w, screen_h)
+        _send_trajectory(mouse, points, screen_w, screen_h, is_long)
 
-        # 逐点发送绝对坐标
-        for i, (px, py) in enumerate(points):
-            # 确保坐标在屏幕范围内
-            px = max(0, min(screen_w - 1, px))
-            py = max(0, min(screen_h - 1, py))
-            mouse.send_data_absolute(px, py)
-
-            # HID 发包间隔：正态随机
-            interval = random.gauss(HID_INTERVAL_MEAN, HID_INTERVAL_SIGMA)
-            interval = max(HID_INTERVAL_MIN, interval)
-
-            # 长距离移动：概率性中途微停顿
-            if is_long and 0 < i < len(points) - 1 and random.random() < PAUSE_PROBABILITY:
-                interval += random.uniform(*PAUSE_DURATION_RANGE)
-
-            time.sleep(interval)
-
-        after_x, after_y = pyautogui.position()
-        _emit(f"[5] 移动完成 当前指针=({after_x},{after_y})", log)
+        _emit(f"[5] 移动完成 目标=({target_x},{target_y})", log)
     finally:
-        ser = getattr(serial, "ser", None)
-        if ser is not None and ser.is_open:
-            ser.close()
-            _emit("[6] 串口已关闭", log)
+        _close_serial(log)
+
+
+def click_at(
+    com_port: str = "COM3",
+    baudrate: int = 115200,
+    x: int = 960,
+    y: int = 540,
+    screen_w: int = 1920,
+    screen_h: int = 1080,
+    timeout: float = 1.0,
+    button: str = "LE",
+    log: LogFn | None = None,
+) -> None:
+    """拟人移动到坐标 (x, y) 并单击（默认左键）。
+
+    button: 'LE' 左键 / 'RI' 右键 / 'CE' 中键（ch9329Comm 按键码）。
+    点击实现：绝对坐标包携带按键位，按下后随机保持 60~120ms 再抬起，
+    前后各有一次拟人停顿。
+    """
+    pyautogui.FAILSAFE = False
+    _emit(f"[C1] 打开串口 port={com_port} baudrate={baudrate}", log)
+    ser = _open_serial(com_port, baudrate, timeout)
+    try:
+        start_x, start_y = pyautogui.position()
+        dist = math.hypot(x - start_x, y - start_y)
+        is_long = dist > LONG_DIST_THRESHOLD
+        _emit(
+            f"[C2] 起点=({start_x},{start_y}) 目标=({x},{y}) "
+            f"距离={dist:.0f}px {'长距离' if is_long else '短距离'}",
+            log,
+        )
+
+        points = _generate_trajectory((start_x, start_y), (x, y))
+        _emit(f"[C3] WindMouse 轨迹点={len(points)}", log)
+
+        mouse = ch9329Comm.mouse.DataComm(screen_w, screen_h)
+        _send_trajectory(mouse, points, screen_w, screen_h, is_long)
+
+        # 到位后短暂停顿再按下，模拟人手确认
+        time.sleep(random.uniform(*CLICK_PRE_DELAY_RANGE))
+        mouse.send_data_absolute(int(x), int(y), button)   # 按下
+        time.sleep(random.uniform(*CLICK_HOLD_RANGE))      # 按住
+        mouse.send_data_absolute(int(x), int(y), "NU")     # 抬起
+        time.sleep(random.uniform(*CLICK_POST_DELAY_RANGE))
+        _emit(f"[C4] 已点击 ({x},{y}) button={button}", log)
+    finally:
+        _close_serial(log)
