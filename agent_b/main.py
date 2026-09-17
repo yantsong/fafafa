@@ -10,7 +10,6 @@ from __future__ import annotations
 import json
 import os
 import queue
-import socket
 import tkinter as tk
 import tkinter.font as tkfont
 from tkinter import messagebox
@@ -18,7 +17,9 @@ from tkinter import messagebox
 from tcp_server import ActionServer
 from protocol import DEFAULT_PORT
 
-BAUDRATE = 115200  # CH9329 固定波特率
+BAUDRATE = 115200      # CH9329 固定波特率
+# B 机固定网络 IP（已通过虚拟 IP 绑定）；如需更改直接修改此处
+AGENT_B_IP = "10.219.18.34"
 
 BG_COLOR = "#1e1e1e"
 PANEL_COLOR = "#2b2b2b"
@@ -38,35 +39,6 @@ STATUS_TEXT = {
     "disconnected": ("连接断开", "#e67e22"),
     "error": ("服务异常", "#e74c3c"),
 }
-
-
-def get_local_ips() -> list[str]:
-    """枚举本机所有网卡的局域网 IPv4（不依赖外网，排除回环/链路本地地址）。
-
-    B 机可能有多个网卡（有线/无线/uu 等虚拟网卡），A 机能连的是与 A
-    同网段的那个，因此全部列出，由用户选择填入 A 机控制端。
-    """
-    ips: list[str] = []
-    try:
-        for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
-            ip = info[4][0]
-            if ip.startswith("127.") or ip.startswith("169.254."):
-                continue
-            if ip not in ips:
-                ips.append(ip)
-    except OSError:
-        pass
-    if not ips:
-        # 兜底：UDP 路由探测（需要能路由到外网，不实际发包）
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        try:
-            s.connect(("8.8.8.8", 80))
-            ips.append(s.getsockname()[0])
-        except OSError:
-            ips.append("127.0.0.1")
-        finally:
-            s.close()
-    return ips
 
 
 def get_font(size: int = 11, bold: bool = False) -> tuple:
@@ -131,10 +103,10 @@ class AgentBApp:
         self._field(body, "CH9329 串口", self.com_var, "例如 COM3")
         self._field(body, "TCP 监听端口", self.port_var, str(DEFAULT_PORT))
 
-        # 本机所有网卡的网络 IP：A 机控制端填与 A 同网段的那个
-        tk.Label(body, text=f"本机网络 IP：{' / '.join(get_local_ips())}（A 机控制端填这个）",
-                 bg=BG_COLOR, fg="#f1c40f", font=self.font, wraplength=380,
-                 justify=tk.LEFT, anchor=tk.W).pack(fill=tk.X, pady=(0, 12))
+        # B 机固定网络 IP：A 机控制端填这个（小号提示，改 IP 请改 AGENT_B_IP 常量）
+        tk.Label(body, text=f"本机网络 IP：{AGENT_B_IP}（A 机控制端填这个）",
+                 bg=BG_COLOR, fg="#9a9aa2", font=get_font(9),
+                 anchor=tk.W).pack(fill=tk.X, pady=(0, 12))
 
         self.toggle_btn = tk.Button(
             body, text="启动服务", font=self.font, bg=BUTTON_BG, fg=BUTTON_FG,

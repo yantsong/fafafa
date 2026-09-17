@@ -1,0 +1,71 @@
+# 示例任务：押镖送信（对应「点 NPC 接任务 → 对话 → 小地图寻路 → 点第二个 NPC → 完成」）
+#
+# 坐标说明：
+# - roi 用截图归一化分数 [x1,y1,x2,y2]，与分辨率无关，按游戏实际位置微调；
+# - route 表里的 target 是 B 屏绝对像素（在小地图上量出的位置），
+#   用控制台「手动测试」点选小地图目标点，从日志读 B 屏坐标后填这里。
+# 新增任务只需复制本文件改名修改，无需改代码。
+
+tasks:
+  example_escort:
+    name: "示例·押镖送信"
+    on_fail: notify        # abort | restart | notify
+    max_restarts: 0
+
+    steps:
+      # 1) 找发任务 NPC，hover 确认后点击
+      - do: click_npc
+        npc: "赛天成"
+        retry: 2
+        timeout: 30
+        settle: 0.8
+
+      # 2) 等对话框弹出并出现接任务相关文字
+      - do: wait_dialog
+        match: ["押送", "镖银", "任务"]
+        roi: [0.0, 0.55, 0.55, 0.85]
+        timeout: 8
+
+      # 3) 点「接受/愿意」类选项
+      - do: choose_option
+        match: ["愿意", "接受", "好的"]
+        roi: [0.0, 0.55, 0.55, 0.85]
+        retry: 1
+        timeout: 8
+
+      # 4) 读对话里的目的地 → 查路线表得到小地图目标点/目标 NPC
+      - do: read_route
+        route_map: routes/escort_routes.json
+        roi: [0.0, 0.55, 0.55, 0.85]
+        store_as: route
+        retry: 2
+
+      # 5) 点小地图对应位置，游戏自动寻路
+      - do: click_point
+        point: "${route.target}"
+        settle: 1.0
+
+      # 6) 等走到目标场景（左上场景名 ROI 出现地名）
+      - do: wait_arrive
+        scene: "${route.scene}"
+        roi: [0.01, 0.06, 0.12, 0.14]
+        timeout: 90
+        interval: 2.0
+
+      # 7) 到目的地后点收任务 NPC
+      - do: click_npc
+        npc: "${route.npc}"
+        retry: 2
+        timeout: 30
+
+      # 8) 一路点对话直到出现完成/交付相关文字
+      - do: dialog_until
+        match: ["完成", "交付", "辛苦", "赏银"]
+        continue_option: ["继续", "下一步", "确定"]
+        fallback_frac: [0.28, 0.80]
+        roi: [0.0, 0.55, 0.55, 0.85]
+        max_rounds: 12
+        timeout: 30
+
+      - do: log
+        text: "押镖送信任务结束"

@@ -101,6 +101,18 @@ class ActionClient:
             "button": button,
         })
 
+    def send_keys(self, keys: str, times: int = 1) -> None:
+        """发送组合键，keys 如 'alt+2'、'ctrl+tab'、'tab'；times 1~10 连按。
+
+        键位合法性由 B 机校验，这里只做基本防御。
+        """
+        if not isinstance(keys, str) or not keys.strip():
+            raise ActionError("keys 不能为空，例如 'alt+2'")
+        times = int(times)
+        if not 1 <= times <= 10:
+            raise ActionError("times 必须在 1~10 之间")
+        self._request({"cmd": "key", "keys": keys.strip(), "times": times})
+
     # ── 收发实现 ──────────────────────────────────────────
 
     def _request(self, payload: dict, timeout: float | None = None) -> dict:

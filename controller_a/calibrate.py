@@ -158,11 +158,12 @@ class CalibrateApp:
     def on_select_region(self) -> None:
         if self.busy:
             return
-        self.root.withdraw()
-        try:
-            region = select_region()
-        finally:
-            self.root.deiconify()
+        # select_region 以 Toplevel 模态方式运行（wait_window），
+        # 不能 withdraw 主窗口；选框窗口自带 topmost 覆盖全屏。
+        region = select_region(self.root)
+        # 选框窗口关闭后把主窗口提到前台并抢回焦点
+        self.root.lift()
+        self.root.focus_force()
         if region is None:
             self.append_log("已取消框选")
             return
@@ -170,6 +171,8 @@ class CalibrateApp:
         self.region_var.set(f"{region[0]},{region[1]} {region[2]}x{region[3]}")
         self.append_log(f"截图区域已设置: left={region[0]} top={region[1]} "
                         f"w={region[2]} h={region[3]}")
+        # 框选完成后立刻提示下一步，避免用户不知道要继续点保存
+        self.append_log("区域已暂存，请继续点「③ 保存配置」写入 config.json")
 
     def on_preview(self) -> None:
         if self.busy or self.region is None:

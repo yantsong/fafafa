@@ -44,7 +44,7 @@ class ScreenCapture:
         return np.asarray(raw)[:, :, :3].copy()
 
 
-def select_region() -> Region | None:
+def select_region(master=None) -> Region | None:
     """截取全部屏幕的快照并全屏展示，在快照图上拖拽框选区域。
 
     用快照而不是透明遮罩：macOS 上无边框透明窗口可能不成为焦点窗口，
@@ -52,6 +52,10 @@ def select_region() -> Region | None:
     沿 B 桌面边缘对齐。
     支持多显示器（取所有屏幕的并集）。返回 (left, top, width, height)，
     为全局屏幕逻辑坐标；按 Esc 取消返回 None。
+
+    master: 已有程序主窗口时必须传入，选框窗口以 Toplevel 模态方式运行。
+    macOS 上严禁在已有 Tk root 存活时再创建第二个 tk.Tk()——第二个 root
+    销毁时会拆掉整个应用，导致主窗口永久消失（进程仍在但无窗口）。
     """
     import tkinter as tk
 
@@ -64,9 +68,15 @@ def select_region() -> Region | None:
     img = np.asarray(raw)[:, :, :3]  # BGR，像素尺寸（Retina 为逻辑尺寸的 2 倍）
     px_h, px_w = img.shape[:2]
 
-    root = tk.Tk()
-    screen_w = root.winfo_screenwidth()
-    screen_h = root.winfo_screenheight()
+    standalone = master is None
+    if standalone:
+        win = tk.Tk()
+        screen_w = win.winfo_screenwidth()
+        screen_h = win.winfo_screenheight()
+    else:
+        win = tk.Toplevel(master)
+        screen_w = master.winfo_screenwidth()
+        screen_h = master.winfo_screenheight()
 
     # 2) 缩放到主屏能容纳的尺寸用于展示
     scale = min(screen_w / px_w, screen_h / px_h, 1.0)
@@ -80,15 +90,14 @@ def select_region() -> Region | None:
     ppm = b"P6\n%d %d\n255\n" % (disp_w, disp_h) + rgb.tobytes()
 
     result: dict = {"region": None}
-    root.title("拖拽框选 B 桌面范围（按 Esc 取消）")
-    root.geometry(f"{disp_w}x{disp_h}+0+0")
-    root.attributes("-topmost", True)
-    root.configure(cursor="crosshair")
+    win.title("拖拽框选 B 桌面范围（按 Esc 取消）")
+    win.geometry(f"{disp_w}x{disp_h}+0+0")
+    win.attributes("-topmost", True)
+    win.configure(cursor="crosshair")
 
-    # master 必须显式指定：calibrate 主窗口已是第一个 Tk root，
-    # 不指定时 PhotoImage 会绑到错误的解释器（报 image "pyimage1" doesn't exist）
-    photo = tk.PhotoImage(master=root, data=ppm)
-    canvas = tk.Canvas(root, width=disp_w, height=disp_h,
+    # master 必须显式指定：PhotoImage 归属窗口销毁时随之释放
+    photo = tk.PhotoImage(master=win, data=ppm)
+    canvas = tk.Canvas(win, width=disp_w, height=disp_h,
                        highlightthickness=0, bg="black")
     canvas.pack(fill=tk.BOTH, expand=True)
     canvas.create_image(0, 0, image=photo, anchor=tk.NW)
@@ -119,15 +128,22 @@ def select_region() -> Region | None:
             gw = width / k
             gh = height / k
             result["region"] = (round(gl), round(gt), round(gw), round(gh))
-        root.destroy()
+        win.destroy()
 
     def on_escape(_event: tk.Event) -> None:
-        root.destroy()
+        win.destroy()
 
     canvas.bind("<ButtonPress-1>", on_press)
     canvas.bind("<B1-Motion>", on_drag)
     canvas.bind("<ButtonRelease-1>", on_release)
-    root.bind("<Escape>", on_escape)
+    win.bind("<Escape>", on_escape)
 
-    root.mainloop()
+    if standalone:
+        win.mainloop()
+    else:
+        # 模态：阻塞主窗口事件处理直到选框窗口关闭，关闭后主窗口完好无损
+        win.transient(master)
+        win.grab_set()
+        win.focus_force()
+        master.wait_window(win)
     return result["region"]

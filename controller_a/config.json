@@ -1,0 +1,16 @@
+{
+  "agent": {
+    "host": "10.219.18.34",
+    "port": 5093
+  },
+  "b_screen": {
+    "width": 1920,
+    "height": 1080
+  },
+  "capture": {
+    "left": 0,
+    "top": 79,
+    "width": 1428,
+    "height": 806
+  }
+}

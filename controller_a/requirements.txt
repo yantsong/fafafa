@@ -1,3 +1,12 @@
-mss>=9.0
+# 必须锁定 8.x：mss 9+ 在 macOS Retina 上只返回 1x 逻辑像素，
+# 8.x 同样区域返回 2x 物理像素，游戏小字识别率天差地别
+mss==8.0.3
 opencv-python>=4.8
 numpy>=1.24
+pillow>=10.0
+# macOS Vision OCR 后端（仅 A 机 macOS 需要）
+pyobjc-framework-Vision>=10.0
+# PP-OCRv5 中文模型（mainline 包），游戏描边小字/复杂背景首选
+rapidocr>=3.0
+# 任务 YAML 配置解析
+pyyaml>=6.0

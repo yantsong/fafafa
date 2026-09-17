@@ -1,0 +1,65 @@
+# 保镖链路 · 最小实测：世界地图寻路 + NPC 识别点击（目标：阳关 / 秦溪山）
+#
+# 流程（与游戏实际操作顺序一致）：
+#   ALT+2 开世界地图 → 点地名「阳关」进小地图 → 点小地图寻路点
+#   → TAB 关小地图 → ALT+2 关世界地图 → 等 NPC 出现 → 点 NPC
+#
+# 坐标全部来自 regions/baobiao.json 与 maps/baobiao_map.json（游戏窗口坐标系）。
+# 前提：① capture 框满整个 uu 远程桌面（16:9）；② 角色已在能打开世界地图的状态；
+#       ③ B 机执行器已连接。
+
+tasks:
+  baobiao_nav_qinxishan:
+    name: "实测·寻路秦溪山"
+    on_fail: notify
+    max_restarts: 0
+    regions_file: ../regions/baobiao.json
+
+    steps:
+      - do: hotkey
+        keys: "alt+2"
+        settle: 1.0
+        desc: "ALT+2 打开世界地图"
+
+      - do: map_click
+        map: maps/baobiao_map.json
+        level: big
+        place: "阳关"
+        settle: 1.2
+        desc: "世界地图点「阳关」进入小地图"
+
+      - do: map_click
+        map: maps/baobiao_map.json
+        level: small
+        place: "阳关"
+        npc: "秦溪山"
+        settle: 0.8
+        desc: "小地图点秦溪山寻路点（开始自动寻路）"
+
+      - do: hotkey
+        keys: "tab"
+        settle: 0.4
+        desc: "TAB 关闭小地图"
+
+      - do: hotkey
+        keys: "alt+2"
+        settle: 0.6
+        desc: "ALT+2 关闭世界地图"
+
+      - do: wait_npc
+        map: maps/baobiao_map.json
+        place: "阳关"
+        npc: "秦溪山"
+        timeout: 90
+        interval: 1.2
+        desc: "自动寻路中，等待秦溪山出现（OCR 名字 → 模板匹配）"
+
+      - do: click_quest_npc
+        map: maps/baobiao_map.json
+        place: "阳关"
+        npc: "秦溪山"
+        settle: 0.8
+        desc: "点击秦溪山（OCR → 模板 → npc_box 三级兜底）"
+
+      - do: log
+        text: "实测流程结束：寻路 + NPC 识别点击完成"

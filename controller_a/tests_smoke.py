@@ -31,9 +31,14 @@ def fake_click(com_port, baudrate, x, y, screen_w, screen_h, button="LE", log=No
     calls.append(("click", x, y, screen_w, screen_h, button))
 
 
+def fake_send_hotkey(com_port, baudrate, keys, times=1, log=None):
+    calls.append(("key", keys, times))
+
+
 stub = types.ModuleType("ch9329")
 stub.move_to_target_humanlike = fake_move
 stub.click_at = fake_click
+stub.send_hotkey = fake_send_hotkey
 sys.modules["ch9329"] = stub
 
 from tcp_server import ActionServer  # noqa: E402
@@ -108,6 +113,23 @@ class ChainTest(unittest.TestCase):
         c = ActionClient("127.0.0.1", 5999, connect_timeout=1.0)
         with self.assertRaises(ActionError):
             c.connect()
+
+    def test_07_key_hotkey_roundtrip(self) -> None:
+        c = ActionClient("127.0.0.1", PORT)
+        c.connect()
+        c.send_keys("alt+2", times=1)
+        c.send_keys("ctrl+tab", times=5)
+        c.close()
+        time.sleep(0.1)
+        self.assertIn(("key", "alt+2", 1), calls)
+        self.assertIn(("key", "ctrl+tab", 5), calls)
+
+    def test_08_empty_keys_rejected_client_side(self) -> None:
+        c = ActionClient("127.0.0.1", PORT)
+        c.connect()
+        with self.assertRaises(ActionError):
+            c.send_keys("")
+        c.close()
 
 
 if __name__ == "__main__":

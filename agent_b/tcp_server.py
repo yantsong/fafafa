@@ -139,6 +139,25 @@ class ActionServer:
             if cmd == "ping":
                 self._reply(conn, msg_id, True)
                 return
+            if cmd == "key":
+                keys = req.get("keys")
+                if not isinstance(keys, str) or not keys.strip():
+                    self._reply(conn, msg_id, False, "key 命令需要非空 keys")
+                    return
+                try:
+                    times = int(req.get("times", 1))
+                except (TypeError, ValueError):
+                    self._reply(conn, msg_id, False, "times 必须是整数")
+                    return
+                # 键盘动作同样独占串口串行执行
+                with self._action_lock:
+                    self._emit(f"[action] key -> {keys!r} ×{times}")
+                    ch9329.send_hotkey(
+                        com_port=self.com_port, baudrate=self.baudrate,
+                        keys=keys, times=times, log=self._log,
+                    )
+                self._reply(conn, msg_id, True)
+                return
             if cmd not in ("move", "click"):
                 self._reply(conn, msg_id, False, f"unknown cmd: {cmd!r}")
                 return

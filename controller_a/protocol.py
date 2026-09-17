@@ -6,6 +6,7 @@
     {"id": 2, "cmd": "move",  "x": 960, "y": 540, "screen_w": 1920, "screen_h": 1080}
     {"id": 3, "cmd": "click", "x": 960, "y": 540, "screen_w": 1920,
      "screen_h": 1080, "button": "LE"}
+    {"id": 4, "cmd": "key", "keys": "alt+2", "times": 1}
 响应（B -> A）：
     {"id": 2, "ok": true}
     {"id": 3, "ok": false, "error": "serial unavailable"}
@@ -19,6 +20,7 @@ TERMINATOR = b"\n"
 DEFAULT_PORT = 5093
 
 VALID_BUTTONS = ("LE", "RI", "CE")
+VALID_CMDS = ("ping", "move", "click", "key")
 
 
 def encode_message(obj: dict) -> bytes:

@@ -326,3 +326,118 @@ def click_at(
         _emit(f"[C4] 已点击 ({x},{y}) button={button}", log)
     finally:
         _close_serial(log)
+
+
+# ════════════════════════════════════════════════════════════════
+# 键盘（CH9329 标准 USB HID 键盘报文）
+# 报文：57 AB | 00 | 02 | 08 | 8字节数据 | 校验和
+# 数据 = [修饰键位, 0x00保留, 键码1..6]
+# ch9329Comm 库自带的键码表只有字母、没有数字/TAB/F键，这里自备全量表。
+# ════════════════════════════════════════════════════════════════
+
+# 修饰键位（第 1 字节，可按位或）
+KEY_MODIFIERS = {
+    "ctrl": 0x01, "control": 0x01,
+    "shift": 0x02,
+    "alt": 0x04,
+    "win": 0x08, "meta": 0x08,
+}
+
+# USB HID Keyboard/Keypad Usage ID（第 3 字节起）
+KEY_USAGES: dict[str, int] = {
+    "a": 0x04, "b": 0x05, "c": 0x06, "d": 0x07, "e": 0x08,
+    "f": 0x09, "g": 0x0A, "h": 0x0B, "i": 0x0C, "j": 0x0D,
+    "k": 0x0E, "l": 0x0F, "m": 0x10, "n": 0x11, "o": 0x12,
+    "p": 0x13, "q": 0x14, "r": 0x15, "s": 0x16, "t": 0x17,
+    "u": 0x18, "v": 0x19, "w": 0x1A, "x": 0x1B, "y": 0x1C,
+    "z": 0x1D,
+    "1": 0x1E, "2": 0x1F, "3": 0x20, "4": 0x21, "5": 0x22,
+    "6": 0x23, "7": 0x24, "8": 0x25, "9": 0x26, "0": 0x27,
+    "enter": 0x28, "return": 0x28,
+    "esc": 0x29, "escape": 0x29,
+    "tab": 0x2B,
+    "space": 0x2C, " ": 0x2C,
+    "f1": 0x3A, "f2": 0x3B, "f3": 0x3C, "f4": 0x3D,
+    "f5": 0x3E, "f6": 0x3F, "f7": 0x40, "f8": 0x41,
+    "f9": 0x42, "f10": 0x43, "f11": 0x44, "f12": 0x45,
+}
+
+# 单次按键保持时长（按下→抬起）
+KEY_HOLD_RANGE = (0.06, 0.12)
+# 连按同一组合键（如 Ctrl+Tab×5）时两次敲击之间的间隔
+KEY_REPEAT_GAP_RANGE = (0.09, 0.16)
+# 修饰键先按下到普通键之间的提前量
+MOD_LEAD_SEC = 0.03
+
+
+def parse_hotkey(keys: str) -> tuple[int, int]:
+    """解析 'alt+2'/'ctrl+tab'/'tab' → (修饰键位, 普通键码)。
+
+    一个组合只允许一个普通键（CH9329 单报告场景够用），
+    纯修饰键或未知键抛 ValueError。
+    """
+    if not isinstance(keys, str) or not keys.strip():
+        raise ValueError("keys 不能为空，例如 'alt+2'")
+    modifier = 0
+    usage: int | None = None
+    for raw in keys.split("+"):
+        token = raw.strip().lower()
+        if not token:
+            continue
+        if token in KEY_MODIFIERS:
+            modifier |= KEY_MODIFIERS[token]
+        elif token in KEY_USAGES:
+            if usage is not None:
+                raise ValueError(f"组合键只支持一个普通键，收到: {keys!r}")
+            usage = KEY_USAGES[token]
+        else:
+            raise ValueError(f"不支持的按键: {token!r}（{keys!r}）")
+    if usage is None:
+        raise ValueError(f"组合键必须包含一个普通键（字母/数字/Tab/F键等）: {keys!r}")
+    return modifier, usage
+
+
+def _write_key_report(ser, modifier: int, usage: int) -> None:
+    """发送 8 键键盘报告；usage=0 表示普通键抬起，modifier=0 且 usage=0 为全释放。"""
+    data = bytes([modifier & 0xFF, 0x00, usage & 0xFF, 0, 0, 0, 0, 0])
+    checksum = (0x57 + 0xAB + 0x00 + 0x02 + 0x08 + sum(data)) & 0xFF
+    packet = b"\x57\xAB\x00\x02\x08" + data + bytes([checksum])
+    ser.write(packet)
+
+
+def send_hotkey(
+    com_port: str = "COM3",
+    baudrate: int = 115200,
+    keys: str = "",
+    times: int = 1,
+    timeout: float = 1.0,
+    log: LogFn | None = None,
+) -> None:
+    """发送组合键（如 ALT+2、Ctrl+Tab×5、TAB）。
+
+    times>1 时修饰键保持按下、普通键重复敲击，最后统一释放，
+    与人工「按住 Ctrl 连按 Tab」的行为一致。
+    """
+    modifier, usage = parse_hotkey(keys)
+    times = int(times)
+    if not 1 <= times <= 10:
+        raise ValueError("times 必须在 1~10 之间")
+
+    _emit(f"[K1] 打开串口 port={com_port} keys={keys!r} times={times}", log)
+    ser = _open_serial(com_port, baudrate, timeout)
+    try:
+        # 修饰键先行（无修饰键时这是一条全零报告，无副作用）
+        _write_key_report(ser, modifier, 0)
+        time.sleep(MOD_LEAD_SEC)
+        for i in range(times):
+            _write_key_report(ser, modifier, usage)   # 普通键按下
+            time.sleep(random.uniform(*KEY_HOLD_RANGE))
+            _write_key_report(ser, modifier, 0)       # 普通键抬起
+            if i < times - 1:
+                time.sleep(random.uniform(*KEY_REPEAT_GAP_RANGE))
+        time.sleep(0.02)
+        _write_key_report(ser, 0, 0)                  # 修饰键释放
+        time.sleep(random.uniform(0.05, 0.12))
+        _emit(f"[K2] 已发送按键 {keys!r} ×{times}", log)
+    finally:
+        _close_serial(log)
