@@ -158,6 +158,32 @@ class ActionServer:
                     )
                 self._reply(conn, msg_id, True)
                 return
+            if cmd == "wheel":
+                x, y, sw, sh = self._parse_coords(req)
+                direction = str(req.get("direction", "down")).lower()
+                if direction not in ("up", "down"):
+                    self._reply(conn, msg_id, False,
+                                f"invalid direction: {direction!r}")
+                    return
+                try:
+                    ticks = int(req.get("ticks", 1))
+                except (TypeError, ValueError):
+                    self._reply(conn, msg_id, False, "ticks 必须是整数")
+                    return
+                if not 1 <= ticks <= 20:
+                    self._reply(conn, msg_id, False,
+                                "ticks 必须在 1~20 之间")
+                    return
+                with self._action_lock:
+                    self._emit(f"[action] wheel -> ({x},{y}) "
+                               f"{direction} ×{ticks}")
+                    ch9329.scroll_at(
+                        com_port=self.com_port, baudrate=self.baudrate,
+                        x=x, y=y, screen_w=sw, screen_h=sh,
+                        direction=direction, ticks=ticks, log=self._log,
+                    )
+                self._reply(conn, msg_id, True)
+                return
             if cmd not in ("move", "click"):
                 self._reply(conn, msg_id, False, f"unknown cmd: {cmd!r}")
                 return

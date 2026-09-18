@@ -22,7 +22,7 @@ tasks:
 
     params:
       place: "大唐东"
-      npc: "垂云叟"
+      npc: "薛大刀"
 
     steps:
       - do: hotkey

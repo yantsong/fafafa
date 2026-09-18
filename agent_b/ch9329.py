@@ -329,6 +329,94 @@ def click_at(
 
 
 # ════════════════════════════════════════════════════════════════
+# 滚轮（CH9329 绝对鼠标报文，CMD=0x04，7 字节数据）
+# 数据 = [0x02, 按键位, X_lo, X_hi, Y_lo, Y_hi, wheel]
+# wheel 为有符号字节：+1 上滚一格，-1(0xFF) 下滚一格。
+# 每格滚轮先发一次带 wheel 的包、再发一次 wheel=0 清零（HID 边沿触发）。
+# ════════════════════════════════════════════════════════════════
+
+# 同一格内：滚轮事件包 → 清零包之间的间隔
+WHEEL_TICK_GAP_RANGE = (0.05, 0.12)
+# 连续两格滚轮之间的间隔（模拟真人逐格滚动）
+WHEEL_TICK_INTERVAL_RANGE = (0.09, 0.20)
+
+
+def _absolute_mouse_packet(x: int, y: int, screen_w: int, screen_h: int,
+                           buttons: int = 0, wheel: int = 0) -> bytes:
+    """组装一帧 CH9329 绝对鼠标报文（纯函数，方便单测）。
+
+    坐标按 ch9329Comm 库同样的规则换算到 0~4095；wheel=-1 下滚/+1 上滚。
+    """
+    x = max(0, min(screen_w - 1, int(x)))
+    y = max(0, min(screen_h - 1, int(y)))
+    x_cur = min(4095, (4096 * x) // screen_w)
+    y_cur = min(4095, (4096 * y) // screen_h)
+    data = bytes([
+        0x02,
+        buttons & 0xFF,
+        x_cur & 0xFF, (x_cur >> 8) & 0xFF,
+        y_cur & 0xFF, (y_cur >> 8) & 0xFF,
+        wheel & 0xFF,
+    ])
+    checksum = (0x57 + 0xAB + 0x00 + 0x04 + 0x07 + sum(data)) & 0xFF
+    return b"\x57\xAB\x00\x04\x07" + data + bytes([checksum])
+
+
+def scroll_at(
+    com_port: str = "COM3",
+    baudrate: int = 115200,
+    x: int = 960,
+    y: int = 540,
+    screen_w: int = 1920,
+    screen_h: int = 1080,
+    timeout: float = 1.0,
+    direction: str = "down",
+    ticks: int = 1,
+    log: LogFn | None = None,
+) -> None:
+    """拟人移动到 (x, y) 后在该位置滚动滚轮（用于游戏内列表翻页）。
+
+    direction: 'down' 下滚（wheel=-1）/ 'up' 上滚（wheel=+1）；
+    ticks:     滚动格数（1~20），每格 = 滚轮事件包 + 清零包，间隔随机。
+    鼠标必须先移进目标列表区域，Windows 只向指针所在窗口投递滚轮事件。
+    """
+    d = str(direction).lower()
+    if d not in ("up", "down"):
+        raise ValueError("direction 只支持 'up'/'down'")
+    ticks = int(ticks)
+    if not 1 <= ticks <= 20:
+        raise ValueError("ticks 必须在 1~20 之间")
+    wheel = -1 if d == "down" else 1
+
+    pyautogui.FAILSAFE = False
+    _emit(f"[W1] 打开串口 port={com_port} 滚动点=({x},{y}) "
+          f"direction={d} ticks={ticks}", log)
+    ser = _open_serial(com_port, baudrate, timeout)
+    try:
+        # 与点击同一套 WindMouse 拟人轨迹，先把指针送进列表区域
+        start_x, start_y = pyautogui.position()
+        dist = math.hypot(x - start_x, y - start_y)
+        is_long = dist > LONG_DIST_THRESHOLD
+        points = _generate_trajectory((start_x, start_y), (x, y))
+        mouse = ch9329Comm.mouse.DataComm(screen_w, screen_h)
+        _send_trajectory(mouse, points, screen_w, screen_h, is_long)
+        # 悬停片刻再滚，确保目标控件拿到焦点
+        time.sleep(random.uniform(*CLICK_PRE_DELAY_RANGE))
+
+        for i in range(1, ticks + 1):
+            ser.write(_absolute_mouse_packet(
+                x, y, screen_w, screen_h, buttons=0, wheel=wheel))
+            time.sleep(random.uniform(*WHEEL_TICK_GAP_RANGE))
+            ser.write(_absolute_mouse_packet(
+                x, y, screen_w, screen_h, buttons=0, wheel=0))
+            if i < ticks:
+                time.sleep(random.uniform(*WHEEL_TICK_INTERVAL_RANGE))
+        _emit(f"[W2] 已在 ({x},{y}) {d} 滚 {ticks} 格", log)
+    finally:
+        _close_serial(log)
+
+
+# ════════════════════════════════════════════════════════════════
 # 键盘（CH9329 标准 USB HID 键盘报文）
 # 报文：57 AB | 00 | 02 | 08 | 8字节数据 | 校验和
 # 数据 = [修饰键位, 0x00保留, 键码1..6]
@@ -362,12 +450,16 @@ KEY_USAGES: dict[str, int] = {
     "f9": 0x42, "f10": 0x43, "f11": 0x44, "f12": 0x45,
 }
 
-# 单次按键保持时长（按下→抬起）
-KEY_HOLD_RANGE = (0.06, 0.12)
+# 单次按键保持时长（按下→抬起），随机模拟真实按压
+KEY_HOLD_RANGE = (0.05, 0.14)
 # 连按同一组合键（如 Ctrl+Tab×5）时两次敲击之间的间隔
-KEY_REPEAT_GAP_RANGE = (0.09, 0.16)
-# 修饰键先按下到普通键之间的提前量
-MOD_LEAD_SEC = 0.03
+KEY_REPEAT_GAP_RANGE = (0.09, 0.18)
+# 修饰键先按下到普通键之间的提前量（随机）
+MOD_LEAD_RANGE = (0.02, 0.06)
+# 动作开始前的“反应延迟”（串口已就绪后、首个键报告前）
+KEY_PRE_DELAY_RANGE = (0.08, 0.26)
+# 普通键全部抬起 → 修饰键释放之间
+MOD_TRAIL_RANGE = (0.02, 0.05)
 
 
 def parse_hotkey(keys: str) -> tuple[int, int]:
@@ -426,16 +518,19 @@ def send_hotkey(
     _emit(f"[K1] 打开串口 port={com_port} keys={keys!r} times={times}", log)
     ser = _open_serial(com_port, baudrate, timeout)
     try:
+        # 拟人反应延迟：不立刻按键，每次动作的起点也随机
+        time.sleep(random.uniform(*KEY_PRE_DELAY_RANGE))
         # 修饰键先行（无修饰键时这是一条全零报告，无副作用）
         _write_key_report(ser, modifier, 0)
-        time.sleep(MOD_LEAD_SEC)
+        time.sleep(random.uniform(*MOD_LEAD_RANGE))
         for i in range(times):
             _write_key_report(ser, modifier, usage)   # 普通键按下
             time.sleep(random.uniform(*KEY_HOLD_RANGE))
             _write_key_report(ser, modifier, 0)       # 普通键抬起
             if i < times - 1:
                 time.sleep(random.uniform(*KEY_REPEAT_GAP_RANGE))
-        time.sleep(0.02)
+        # 修饰键延迟释放，最后收尾停顿
+        time.sleep(random.uniform(*MOD_TRAIL_RANGE))
         _write_key_report(ser, 0, 0)                  # 修饰键释放
         time.sleep(random.uniform(0.05, 0.12))
         _emit(f"[K2] 已发送按键 {keys!r} ×{times}", log)
