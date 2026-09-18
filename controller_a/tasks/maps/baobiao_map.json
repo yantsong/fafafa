@@ -5,8 +5,13 @@
     "3_两级": "places.<地名>.bigmap_click = TAB大地图上点该地名的坐标（点完进入小地图）；places.<地名>.npcs.<NPC名>.minimap_click = 小地图上直接开始寻路的点击坐标（代替手动输入NPC名+点寻按钮）。",
     "4_点击优先级": "到达后点NPC的三级策略：① OCR找名字并点击；② 模板匹配（template 图，搜索范围=整个游戏窗口区域，由 game_window 换算到截图坐标，排除黑边/UU边框干扰，多尺度匹配）；③ 以上都失败 → 在 npc_box 框内随机盲点（纯坐标兜底，不做检测）。",
     "5_npc_box": "第三方案的保底点击框 [x,y,w,h]：仅当 OCR 和模板匹配都没命中时使用，在框中心 jitter 范围内随机点一下。它不是模板匹配的搜索区。",
-    "6_template": "模板图文件名，放在 controller_a/assets/ 目录（从 controller_a/debug/ 的原始截图帧里裁，PNG，背景尽量干净）。第二方案在整个游戏窗口区域内做模板匹配。不需要模板兜底可留空字符串。",
+    "6_template": "模板图文件名（单字符串或字符串数组），放在 controller_a/assets/ 目录（从 controller_a/debug/ 的原始截图帧里裁，PNG，背景尽量干净）。数组形式用于移动 NPC 多视角/多姿态，循环匹配取最高分。不需要模板兜底可留空字符串。",
     "7_待测量": "所有 -1 占位，请替换。键名必须和任务板解析出来的地名/NPC名完全一致（用游戏内实际文字）。"
+  },
+
+  "defaults": {
+    "_click_jitter_px_说明": "map_click 点击大地图地名/小地图寻路点时，在配置坐标 x/y 上各加 ±N 像素的均匀随机偏移，模拟真人每次点不准、防检测。这些是精确 UI 热区，N 不宜过大（3 比较安全；调到 0 则永远点正中心）。",
+    "click_jitter_px": 3
   },
 
   "places": {
@@ -21,6 +26,18 @@
       }
     },
 
+    "镖局": {
+      "_说明": "镖局场景，赛天威固定站位。无大地图/小地图寻路点（已在场景内）",
+      "bigmap_click": [-1, -1],
+      "npcs": {
+        "赛天威": {
+          "minimap_click": [-1, -1],
+          "npc_box": [-1, -1, -1, -1],
+          "template": "saitianwei.png"
+        }
+      }
+    },
+
     "长安": {
       "bigmap_click": [506, 290],
       "npcs": {
@@ -28,6 +45,16 @@
           "minimap_click": [63, 481],
           "npc_box": [190, 330, 40, 100],
           "template": "dianwei.png"
+        }
+      }
+    },
+    "孔庙": {
+      "bigmap_click": [653, 240],
+      "npcs": {
+        "书生": {
+          "minimap_click": [188, 317],
+          "npc_box": [190, 330, 40, 100],
+          "template": ["shusheng1.png","shusheng2.png","shusheng3.png"]
         }
       }
     }

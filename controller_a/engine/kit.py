@@ -24,7 +24,8 @@ class Kit:
                  npc_config: NpcServiceConfig,
                  stop_event: threading.Event,
                  log: Callable[[str], None],
-                 region_book: RegionBook | None = None) -> None:
+                 region_book: RegionBook | None = None,
+                 on_leader: Callable[[str], None] | None = None) -> None:
         self.capture = capture
         self.mapper = mapper
         self.client = client
@@ -33,9 +34,18 @@ class Kit:
         self.stop_event = stop_event
         self._log = log
         self.region_book = region_book
+        self._on_leader = on_leader
 
     def log(self, msg: str) -> None:
         self._log(msg)
+
+    def notify_leader(self, name: str) -> None:
+        """检测到队长切换时调用，通知 UI 实时刷新当前队长。"""
+        if self._on_leader is not None:
+            try:
+                self._on_leader(name)
+            except Exception:
+                pass
 
     def check_stop(self) -> None:
         if self.stop_event.is_set():

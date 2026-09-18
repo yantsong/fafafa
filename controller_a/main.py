@@ -284,6 +284,17 @@ class ControllerApp:
         self.quest_start_btn.pack(side=tk.LEFT, fill=tk.X, expand=True)
         self._reload_tasks()
 
+        # 队长状态显示行
+        leader_row = tk.Frame(body, bg=BG_COLOR)
+        leader_row.pack(fill=tk.X, pady=(4, 0))
+        tk.Label(leader_row, text="当前队长：", bg=BG_COLOR, fg=LABEL_COLOR,
+                 font=self.small_font, anchor=tk.W).pack(side=tk.LEFT)
+        self.leader_var = tk.StringVar(value="（未检测）")
+        self.leader_label = tk.Label(
+            leader_row, textvariable=self.leader_var, bg=BG_COLOR,
+            fg="#ffd93d", font=self.font, anchor=tk.W)
+        self.leader_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
+
         self._section_label(body, "日志", pady=(8, 2))
         log_frame = tk.Frame(body, bg=PANEL_COLOR, padx=2, pady=2)
         log_frame.pack(fill=tk.BOTH, expand=True)
@@ -522,7 +533,9 @@ class ControllerApp:
 
         kit = Kit(capture, mapper, self.client, self.ocr, npc_cfg,
                   self.quest_stop_event, lambda m: self.log(m),
-                  region_book=region_book)
+                  region_book=region_book,
+                  on_leader=lambda name: self.root.after(
+                      0, lambda: self.leader_var.set(name)))
         engine = QuestEngine(task, kit, lambda m, lv="": self.log(m, lv))
 
         def _done(result) -> None:
@@ -540,8 +553,11 @@ class ControllerApp:
         self.quest_running = False
         self.quest_start_btn.configure(state=tk.NORMAL)
         level = "ok" if result.success else "fail"
-        self.log(f"==== {result.message}｜耗时 {result.elapsed:.1f}s ====",
+        suffix = f"｜当前队长：{result.leader}" if result.leader else ""
+        self.log(f"==== {result.message}{suffix}｜耗时 {result.elapsed:.1f}s ====",
                  level)
+        if result.leader:
+            self.leader_var.set(result.leader)
 
     # ── NPC 识别 ─────────────────────────────────────────
 

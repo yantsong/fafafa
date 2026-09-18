@@ -18,8 +18,17 @@ VALID_STEP_KEYS = {
     "store_as", "scene", "roi", "timeout", "retry", "secs", "text",
     "continue_option", "fallback_frac", "max_rounds", "interval",
     "settle", "confidence", "regex", "desc",
-    # 保镖任务：组合键 / 固定区域 / 两级地图 / NPC 视觉
+    # 保镖任务：组合键 / 固定区域 / 两级地图 / NPC 视觉 / HUD 到达判定
     "keys", "times", "region", "button", "map", "level", "place",
+    "stable_secs", "coord_tol", "confirm_checks",
+    "match", "optional", "dialog_region", "quest_region", "red_threshold",
+    "search_secs", "search_interval",
+    "slot_region", "confirm_region", "times",
+    "pattern", "debug_save",
+    "leader_key",
+    # OCR 地图寻路方案：区域找字 / NPC 树滚动选择
+    "folder_match", "scroll_ticks", "max_scrolls", "bottom_same",
+    "jitter_px",
 }
 
 

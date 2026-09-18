@@ -34,6 +34,7 @@ class QuestResult:
     failed_step: int = -1      # 1-based，-1 表示无
     failed_action: str = ""
     stopped: bool = False
+    leader: str = ""           # 任务过程中检测到的当前队长（check_leader 写入）
 
 
 class QuestEngine:
@@ -50,6 +51,7 @@ class QuestEngine:
     def run(self) -> QuestResult:
         t0 = time.monotonic()
         restarts = 0
+        ctx: QuestContext | None = None
         while True:
             ctx = QuestContext(dict(self.task.params))
             ctx.set("_task_dir",
@@ -57,15 +59,18 @@ class QuestEngine:
                     if "/" in self.task.source_file else ".")
             try:
                 self._run_once(ctx)
+                leader = ctx.get("leader.name") or ""
                 return QuestResult(
                     True, f"任务「{self.task.name}」完成",
-                    time.monotonic() - t0, restarts)
+                    time.monotonic() - t0, restarts, leader=leader)
             except StepStopped:
+                leader = (ctx.get("leader.name") or "") if ctx else ""
                 return QuestResult(
                     False, "任务已被用户停止", time.monotonic() - t0,
-                    restarts, stopped=True)
+                    restarts, stopped=True, leader=leader)
             except StepFailed as exc:
                 idx, action = getattr(exc, "_step_pos", (-1, ""))
+                leader = (ctx.get("leader.name") or "") if ctx else ""
                 if self.task.on_fail == "restart" and restarts < self.task.max_restarts:
                     restarts += 1
                     self.log(f"第 {idx} 步（{action}）失败：{exc}；"
@@ -76,7 +81,7 @@ class QuestEngine:
                 if self.task.on_fail == "notify":
                     msg += " —— 已停止，请人工处理（不会继续操作）"
                 return QuestResult(False, msg, time.monotonic() - t0,
-                                   restarts, idx, action)
+                                   restarts, idx, action, leader=leader)
 
     def _run_once(self, ctx: QuestContext) -> None:
         total = len(self.task.steps)
@@ -147,6 +152,10 @@ def _describe(action: str, step: dict) -> str:
         button = step.get("button", "left")
         side = "右键" if button == "right" else "左键"
         return f"{side}点击固定区域「{step.get('region')}」"
+    if action == "transfer_leader":
+        times = step.get("times", 1)
+        label = "给与队长" if times == 1 else f"给回队长（×{times}）"
+        return f"切换队长：{label}"
     if action == "map_click":
         level = step.get("level", "big")
         where = "大地图地名" if level == "big" else "小地图寻路点"
@@ -155,8 +164,20 @@ def _describe(action: str, step: dict) -> str:
         return f"点击{where}「{target}」"
     if action == "wait_npc":
         return f"等待 NPC「{step.get('npc')}」出现（OCR/模板）"
+    if action == "wait_arrive_pos":
+        return (f"等待寻路到达「{step.get('place')}/{step.get('npc')}」"
+                f"（静止 {step.get('stable_secs', 2.5)}s + NPC 确认）")
     if action == "click_quest_npc":
-        return f"点击目标 NPC「{step.get('npc')}」"
+        return f"点击 NPC「{step.get('npc')}」"
+    if action == "dialog_choose":
+        opt = "（可选）" if step.get("optional") else ""
+        return f"对话选项「{step.get('match')}」{opt}"
+    if action == "check_quest_accepted":
+        return "确认接取成功（红色文字双区域）"
+    if action == "check_leader":
+        return "OCR 提示区确认当前队长"
+    if action == "switch_tab":
+        return f"切换标签到「当前队长」"
     if action == "sleep":
         return f"等待 {step.get('secs')}s"
     return action

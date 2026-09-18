@@ -35,10 +35,16 @@ def fake_send_hotkey(com_port, baudrate, keys, times=1, log=None):
     calls.append(("key", keys, times))
 
 
+def fake_scroll(com_port, baudrate, x, y, screen_w, screen_h,
+                direction="down", ticks=1, log=None):
+    calls.append(("wheel", x, y, screen_w, screen_h, direction, ticks))
+
+
 stub = types.ModuleType("ch9329")
 stub.move_to_target_humanlike = fake_move
 stub.click_at = fake_click
 stub.send_hotkey = fake_send_hotkey
+stub.scroll_at = fake_scroll
 sys.modules["ch9329"] = stub
 
 from tcp_server import ActionServer  # noqa: E402
@@ -129,6 +135,34 @@ class ChainTest(unittest.TestCase):
         c.connect()
         with self.assertRaises(ActionError):
             c.send_keys("")
+        c.close()
+
+    def test_09_wheel_roundtrip(self) -> None:
+        c = ActionClient("127.0.0.1", PORT)
+        c.connect()
+        c.scroll(500, 300, 1920, 1080, direction="up", ticks=3)
+        c.scroll(500, 300, 1920, 1080)  # 默认 down ×1
+        c.close()
+        time.sleep(0.1)
+        self.assertIn(
+            ("wheel", 500, 300, 1920, 1080, "up", 3), calls)
+        self.assertIn(
+            ("wheel", 500, 300, 1920, 1080, "down", 1), calls)
+
+    def test_10_wheel_bad_direction_rejected(self) -> None:
+        c = ActionClient("127.0.0.1", PORT)
+        c.connect()
+        with self.assertRaises(ActionError):
+            c.scroll(1, 1, 1920, 1080, direction="left")
+        c.close()
+
+    def test_11_wheel_ticks_range_rejected(self) -> None:
+        c = ActionClient("127.0.0.1", PORT)
+        c.connect()
+        with self.assertRaises(ActionError):
+            c.scroll(1, 1, 1920, 1080, ticks=0)
+        with self.assertRaises(ActionError):
+            c.scroll(1, 1, 1920, 1080, ticks=21)
         c.close()
 
 

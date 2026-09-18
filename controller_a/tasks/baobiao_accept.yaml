@@ -1,0 +1,57 @@
+# 保镖任务 · 第一阶段：接任务
+#
+# 流程：找并点击赛天威 → 三轮对话选选项 → 红色文字双区确认
+#
+# 对话框选项是绿色文字(rgb12,244,72)，白色是描述文字——dialog_choose
+# 会自动跳过白色文字，只点绿色可选项。
+# 第三轮"确认"不一定存在：optional=true，超时跳过不报错。
+# 接取成功后对话框+任务追踪栏出现红色文字(255,0,0)。
+
+tasks:
+  baobiao_accept:
+    name: "保镖·接任务"
+    on_fail: notify
+    max_restarts: 0
+    regions_file: ../regions/baobiao.json
+
+    steps:
+      - do: click_quest_npc
+        map: maps/baobiao_map.json
+        place: "镖局"
+        npc: "赛天威"
+        retry: 3
+        settle: 1.0
+        desc: "找到并点击赛天威"
+
+      - do: dialog_choose
+        region: dialog_area
+        match: "小队运镖"
+        optional: false
+        timeout: 5
+        settle: 1.0
+        desc: "第1轮对话：选择「小队运镖」"
+
+      - do: dialog_choose
+        region: dialog_area
+        match: "1600两"
+        optional: false
+        timeout: 5
+        settle: 1.0
+        desc: "第2轮对话：选择「1600两」"
+
+      - do: dialog_choose
+        region: dialog_area
+        match: "确认"
+        optional: true
+        timeout: 3
+        settle: 0.5
+        desc: "第3轮对话：选择「确认」（可选，不存在则跳过）"
+
+      - do: check_quest_accepted
+        dialog_region: dialog_area
+        quest_region: quest_board
+        timeout: 5
+        desc: "确认接取成功（对话框+任务板红色文字）"
+
+      - do: log
+        text: "第一阶段完成：接任务成功"

@@ -1,0 +1,90 @@
+# OCR 寻路方案 · 实测任务（目标：大唐东 / 垂云叟）
+#
+# 用途：验证第二套 OCR 寻路链路（不依赖 MAP 坐标表）。
+# 前提：
+#   1. regions/baobiao.json 三个区域已实测填写（-1 占位时会在对应步骤报错）：
+#      - worldmap_scene_area：世界地图场景名分布区
+#      - minimap_npc_panel：  小地图右侧 NPC 树形列表区
+#      - minimap_xun_area：   「寻」按钮固定小区域
+#   2. 角色已在能打开世界地图的状态，B 机执行器已连接。
+#
+# 流程：
+#   ALT+2 开世界地图 → OCR 点「大唐东」进小地图 → 展开「普通NPC」滚动
+#   找到「垂云叟」 → 点「寻」自动寻路 → TAB 关小地图 → ALT+2 关世界地图
+#   → 静止 + OCR 确认到达 → OCR 找到垂云叟并点击。
+
+tasks:
+  nav_ocr_chuiyunsou:
+    name: "实测·OCR寻路垂云叟"
+    on_fail: notify
+    max_restarts: 0
+    regions_file: ../regions/baobiao.json
+
+    params:
+      place: "大唐东"
+      npc: "垂云叟"
+
+    steps:
+      - do: hotkey
+        keys: "alt+2"
+        settle: 1.0
+        desc: "ALT+2 打开世界地图"
+
+      - do: click_text
+        region: worldmap_scene_area
+        match: "${place}"
+        timeout: 8
+        interval: 0.5
+        settle: 1.2
+        desc: "OCR 世界地图场景名「大唐东」并点击，进入小地图"
+
+      - do: minimap_npc_pick
+        region: minimap_npc_panel
+        npc: "${npc}"
+        folder_match: "普通NPC"
+        timeout: 20
+        scroll_ticks: 2
+        max_scrolls: 15
+        bottom_same: 2
+        settle: 0.45
+        desc: "展开普通NPC目录→滚动列表 OCR 找到「垂云叟」并点选"
+
+      - do: click_text
+        region: minimap_xun_area
+        match: "寻"
+        timeout: 5
+        interval: 0.4
+        settle: 0.6
+        desc: "OCR 点「寻」按钮，开始自动寻路"
+
+      - do: hotkey
+        keys: "tab"
+        settle: 0.4
+        desc: "TAB 关闭小地图"
+
+      - do: hotkey
+        keys: "alt+2"
+        settle: 0.6
+        desc: "ALT+2 关闭世界地图"
+
+      - do: wait_arrive_pos
+        place: "${place}"
+        npc: "${npc}"
+        stable_secs: 2.5
+        coord_tol: 4
+        confirm_checks: 8
+        timeout: 120
+        interval: 0.5
+        desc: "等待到达大唐东（静止2.5s + OCR 连续确认垂云叟；路远放宽到120s）"
+
+      - do: click_quest_npc
+        place: "${place}"
+        npc: "${npc}"
+        retry: 3
+        settle: 0.8
+        search_secs: 10
+        search_interval: 0.5
+        desc: "到达后 OCR 搜索并点击垂云叟（纯 OCR，无模板/盲点兜底）"
+
+      - do: log
+        text: "实测流程结束：已到达 ${place} 并点击 ${npc}"

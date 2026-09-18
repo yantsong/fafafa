@@ -1,0 +1,89 @@
+# 通用 OCR 地图寻路方案（不依赖 MAP 坐标表，只需场景名 + NPC 名）
+#
+# 前置条件：
+#   1. regions/baobiao.json 中三个区域已实测填写（-1 占位时任务会在对应步骤报错）：
+#      - worldmap_scene_area：世界地图场景名分布区
+#      - minimap_npc_panel：  小地图右侧 NPC 树形列表区
+#      - minimap_xun_area：   「寻」按钮固定小区域
+#   2. 改下方 params.place / params.npc 即可复用到不同任务。
+#
+# 流程：
+#   ALT+2 开世界地图 → OCR 点场景名进小地图 → 展开「普通NPC」并滚动找到 NPC
+#   → 点「寻」开始自动寻路 → TAB 关小地图 → ALT+2 关世界地图
+#   → HUD 静止 + OCR 名字确认到达 → OCR 找到 NPC 并点击。
+
+tasks:
+  nav_ocr:
+    name: "OCR寻路·通用"
+    on_fail: notify
+    max_restarts: 0
+    regions_file: ../regions/baobiao.json
+
+    params:
+      place: "长安"
+      npc: "典韦"
+
+    steps:
+      - do: hotkey
+        keys: "alt+2"
+        settle: 1.0
+        desc: "ALT+2 打开世界地图"
+
+      - do: click_text
+        region: worldmap_scene_area
+        match: "${place}"
+        timeout: 8
+        interval: 0.5
+        settle: 1.2
+        desc: "OCR 世界地图场景名「${place}」并点击，进入小地图"
+
+      - do: minimap_npc_pick
+        region: minimap_npc_panel
+        npc: "${npc}"
+        folder_match: "普通NPC"
+        timeout: 20
+        scroll_ticks: 2
+        max_scrolls: 15
+        bottom_same: 2
+        settle: 0.45
+        desc: "展开普通NPC目录→滚动列表 OCR 找到「${npc}」并点选"
+
+      - do: click_text
+        region: minimap_xun_area
+        match: "寻"
+        timeout: 5
+        interval: 0.4
+        settle: 0.6
+        desc: "OCR 点「寻」按钮，开始自动寻路"
+
+      - do: hotkey
+        keys: "tab"
+        settle: 0.4
+        desc: "TAB 关闭小地图"
+
+      - do: hotkey
+        keys: "alt+2"
+        settle: 0.6
+        desc: "ALT+2 关闭世界地图"
+
+      - do: wait_arrive_pos
+        place: "${place}"
+        npc: "${npc}"
+        stable_secs: 2.5
+        coord_tol: 4
+        confirm_checks: 8
+        timeout: 90
+        interval: 0.5
+        desc: "等待到达${place}（静止2.5s + OCR 连续确认${npc}；无 MAP，纯 OCR）"
+
+      - do: click_quest_npc
+        place: "${place}"
+        npc: "${npc}"
+        retry: 3
+        settle: 0.8
+        search_secs: 10
+        search_interval: 0.5
+        desc: "到达后 OCR 搜索并点击${npc}（纯 OCR，无模板/盲点兜底）"
+
+      - do: log
+        text: "OCR 寻路流程结束：已到达 ${place} 并点击 ${npc}"

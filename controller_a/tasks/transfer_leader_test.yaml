@@ -1,0 +1,101 @@
+# 切换队长 + 切换标签 · 实测
+#
+# 流程：（切换队长 → 确认队长 → 切换标签）重复 3 次，最后队长回到自己。
+# 第1轮：给与队长×1 → check_leader → switch_tab
+# 第2轮：给回队长×5 → check_leader → switch_tab
+# 第3轮：给与队长×1 → check_leader → switch_tab
+# 收尾：给回队长×5 → check_leader → switch_tab（队长回到自己）
+#
+# 前提：
+#   ① 角色已组队且队伍面板可见（队友头像在 team_slot 315,15 区域）；
+#   ② B 机执行器已连接；
+#   ③ capture 框已框住游戏窗口 + 顶部标签栏（team_tabs 15,30,790,20 是 B 屏绝对坐标）。
+
+tasks:
+  transfer_leader_test:
+    name: "实测·切换队长+切换标签"
+    on_fail: notify
+    max_restarts: 0
+    regions_file: ../regions/baobiao.json
+
+    steps:
+      - do: log
+        text: "开始：（切换队长→确认队长→切换标签）×3，最后队长回到自己"
+
+      # ── 第 1 轮 ──
+      - do: transfer_leader
+        times: 1
+        settle: 0.8
+        desc: "给与队长×1"
+
+      - do: check_leader
+        region: leader_hint
+        settle: 0.5
+        timeout: 10
+        interval: 0.5
+        debug_save: true
+        desc: "确认当前队长（首轮存 debug/leader_hint.png）"
+
+      - do: switch_tab
+        region: team_tabs
+        timeout: 8
+        interval: 0.4
+        settle: 0.4
+        desc: "按当前队长名点击对应队员标签"
+
+      # ── 第 2 轮 ──
+      - do: transfer_leader
+        times: 1
+        settle: 0.8
+        desc: "给回队长×1"
+
+      - do: check_leader
+        region: leader_hint
+        settle: 0.5
+        timeout: 10
+        interval: 0.5
+
+      - do: switch_tab
+        region: team_tabs
+        timeout: 8
+        interval: 0.4
+        settle: 0.4
+
+      # ── 第 3 轮 ──
+      - do: transfer_leader
+        times: 1
+        settle: 0.8
+        desc: "给与队长×1"
+
+      - do: check_leader
+        region: leader_hint
+        settle: 0.5
+        timeout: 10
+        interval: 0.5
+
+      - do: switch_tab
+        region: team_tabs
+        timeout: 8
+        interval: 0.4
+        settle: 0.4
+
+      # ── 收尾：队长回到自己 ──
+      - do: transfer_leader
+        times: 1
+        settle: 0.8
+        desc: "给回队长×5（队长回到自己）"
+
+      - do: check_leader
+        region: leader_hint
+        settle: 0.5
+        timeout: 10
+        interval: 0.5
+
+      - do: switch_tab
+        region: team_tabs
+        timeout: 8
+        interval: 0.4
+        settle: 0.4
+
+      - do: log
+        text: "实测流程结束：3 轮切换队长+标签完成，队长已回到自己"

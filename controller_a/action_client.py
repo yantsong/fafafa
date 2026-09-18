@@ -113,6 +113,25 @@ class ActionClient:
             raise ActionError("times 必须在 1~10 之间")
         self._request({"cmd": "key", "keys": keys.strip(), "times": times})
 
+    def scroll(self, x: int, y: int, screen_w: int, screen_h: int,
+               direction: str = "down", ticks: int = 1) -> None:
+        """在 (x, y) 处滚动滚轮（B 机会先拟人移动过去再滚）。
+
+        direction: 'down' 下滚 / 'up' 上滚；ticks: 1~20 格。
+        用于小地图 NPC 列表等可滚动区域翻页。
+        """
+        d = str(direction).lower()
+        if d not in ("up", "down"):
+            raise ActionError("direction 只支持 'up'/'down'")
+        ticks = int(ticks)
+        if not 1 <= ticks <= 20:
+            raise ActionError("ticks 必须在 1~20 之间")
+        self._request({
+            "cmd": "wheel", "x": int(x), "y": int(y),
+            "screen_w": int(screen_w), "screen_h": int(screen_h),
+            "direction": d, "ticks": ticks,
+        })
+
     # ── 收发实现 ──────────────────────────────────────────
 
     def _request(self, payload: dict, timeout: float | None = None) -> dict:

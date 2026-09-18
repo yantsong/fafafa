@@ -1,0 +1,132 @@
+# 保镖链路 · 最小实测：世界地图寻路 + NPC 识别点击（目标：长安 / 典韦）
+#
+# 与「实测·寻路秦溪山」流程相同，区别：
+#   - 目的地是「长安」，大地图/小地图坐标取自 MAP 中长安条目；
+#   - 典韦在 MAP 里配了 npc_box [190,330,40,100]，所以 OCR/模板都失败时
+#     会在该框内随机盲点（秦溪山任务没有配 npc_box，失败会直接停下）。
+#
+# 识别成功后日志会明确打印「识别方式：OCR 文字 / 模板匹配 / 保底盲点」。
+
+tasks:
+  baobiao_nav_dianwei:
+    name: "实测·寻路典韦"
+    on_fail: notify
+    max_restarts: 0
+    regions_file: ../regions/baobiao.json
+
+    steps:
+      - do: hotkey
+        keys: "alt+2"
+        settle: 1.0
+        desc: "ALT+2 打开世界地图"
+
+      - do: map_click
+        map: maps/baobiao_map.json
+        level: big
+        place: "长安"
+        settle: 1.2
+        desc: "世界地图点「长安」进入小地图"
+
+      - do: map_click
+        map: maps/baobiao_map.json
+        level: small
+        place: "长安"
+        npc: "典韦"
+        settle: 0.8
+        desc: "小地图点典韦寻路点（开始自动寻路）"
+
+      - do: hotkey
+        keys: "tab"
+        settle: 0.4
+        desc: "TAB 关闭小地图"
+
+      - do: hotkey
+        keys: "alt+2"
+        settle: 0.6
+        desc: "ALT+2 关闭世界地图"
+
+      - do: wait_arrive_pos
+        region: hud_status
+        map: maps/baobiao_map.json
+        place: "长安"
+        npc: "典韦"
+        stable_secs: 2.5
+        coord_tol: 4
+        confirm_checks: 8
+        timeout: 90
+        interval: 0.5
+        desc: "等待到达长安（静止2.5s + 连续确认典韦；最多8轮约4s兜底）"
+
+      - do: click_quest_npc
+        map: maps/baobiao_map.json
+        place: "长安"
+        npc: "典韦"
+        retry: 3
+        settle: 0.8
+        search_secs: 10
+        search_interval: 0.5
+        desc: "点击典韦（搜索窗口10s内轮询识别，NPC走回画面即点，超时 npc_box 兜底）"
+
+      - do: log
+        text: "实测流程结束：寻路 + 典韦识别点击完成"
+  baobiao_nav_shusheng:
+    name: "寻路书生"
+    on_fail: notify
+    max_restarts: 0
+    regions_file: ../regions/baobiao.json
+
+    steps:
+      - do: hotkey
+        keys: "alt+2"
+        settle: 1.0
+        desc: "ALT+2 打开世界地图"
+
+      - do: map_click
+        map: maps/baobiao_map.json
+        level: big
+        place: "孔庙"
+        settle: 1.2
+        desc: "世界地图点「孔庙」进入小地图"
+
+      - do: map_click
+        map: maps/baobiao_map.json
+        level: small
+        place: "孔庙"
+        npc: "书生"
+        settle: 0.8
+        desc: "小地图点书生寻路点（开始自动寻路）"
+
+      - do: hotkey
+        keys: "tab"
+        settle: 0.4
+        desc: "TAB 关闭小地图"
+
+      - do: hotkey
+        keys: "alt+2"
+        settle: 0.6
+        desc: "ALT+2 关闭世界地图"
+
+      - do: wait_arrive_pos
+        region: hud_status
+        map: maps/baobiao_map.json
+        place: "孔庙"
+        npc: "书生"
+        stable_secs: 2.5
+        coord_tol: 4
+        confirm_checks: 8
+        timeout: 90
+        interval: 0.5
+        desc: "等待到达长安（静止2.5s + 连续确认典韦；最多8轮约4s兜底）"
+
+      - do: click_quest_npc
+        map: maps/baobiao_map.json
+        place: "孔庙"
+        npc: "书生"
+        retry: 3
+        settle: 0.8
+        search_secs: 10
+        search_interval: 0.5
+        desc: "点击书生（搜索窗口10s内轮询识别，NPC走回画面即点，超时 npc_box 兜底）"
+
+      - do: log
+        text: "实测流程结束：寻路 + 典韦识别点击完成"

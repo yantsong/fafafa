@@ -55,9 +55,11 @@ class RegionBook:
             if any(v < 0 for v in box):
                 continue  # 仍是 -1 占位的区域不注册，用时给明确报错
             jitter = raw.get("jitter")
+            screen = bool(raw.get("screen", False))
             regions[name] = {
                 "box": box,
                 "jitter": float(jitter) if jitter is not None else None,
+                "screen": screen,
             }
         defaults = data.get("defaults", {}) or {}
         return cls(gw, regions,
@@ -72,20 +74,23 @@ class RegionBook:
         by = self.gy + y + random.uniform(-jitter_px, jitter_px)
         return int(bx), int(by)
 
-    def game_box_click_b(self, box: list[int] | tuple[int, int, int, int],
-                         jitter: float | None = None) -> tuple[int, int]:
-        """游戏窗口内 [x,y,w,h] 框 → B 屏随机点击点。
+    def game_box_click_b(self, box, jitter: float | None = None,
+                         screen: bool = False) -> tuple[int, int]:
+        """[x,y,w,h] 框 → B 屏随机点击点。
 
-        点击点落在框中心 jitter 比例范围内（默认 0.6 = 中间 60%，
-        四周各留 20% 边距），不取正中心。
+        screen=False（默认）：坐标相对游戏窗口，加 game_window 偏移。
+        screen=True：坐标已是 B 屏绝对坐标，直接使用（用于游戏窗口外的区域）。
         """
         x, y, w, h = (float(v) for v in box)
         j = self.jitter_default if jitter is None else float(jitter)
         j = max(0.0, min(1.0, j))
         cx, cy = x + w / 2.0, y + h / 2.0
         rx, ry = w * j / 2.0, h * j / 2.0
-        return self.game_point_to_b(cx + random.uniform(-rx, rx),
-                                   cy + random.uniform(-ry, ry))
+        jx = cx + random.uniform(-rx, rx)
+        jy = cy + random.uniform(-ry, ry)
+        if screen:
+            return int(jx), int(jy)
+        return self.game_point_to_b(jx, jy)
 
     def region_click_b(self, name: str) -> tuple[int, int]:
         """命名区域 → B 屏随机点击点。"""
@@ -93,7 +98,8 @@ class RegionBook:
         if region is None:
             raise RegionConfigError(
                 f"区域「{name}」未配置或仍是占位值（-1），请在 regions 文件中填写")
-        return self.game_box_click_b(region["box"], region["jitter"])
+        return self.game_box_click_b(region["box"], region["jitter"],
+                                     region.get("screen", False))
 
     # ── 换算：L1/L2 → 归一化（截图 OCR/模板用）────────────
 
@@ -103,6 +109,32 @@ class RegionBook:
                 self.gy / b_height,
                 (self.gx + self.gw) / b_width,
                 (self.gy + self.gh) / b_height)
+
+    def game_box_roi(self, box, b_width: int, b_height: int,
+                     screen: bool = False):
+        """[x,y,w,h] 框 → 截图归一化 ROI（OCR 子区域用）。
+
+        screen=False（默认）：坐标相对游戏窗口，加 game_window 偏移。
+        screen=True：坐标已是 B 屏绝对坐标，直接换算（用于游戏窗口外的区域）。
+        """
+        x, y, w, h = (float(v) for v in box)
+        if screen:
+            ox, oy = 0.0, 0.0
+        else:
+            ox, oy = self.gx, self.gy
+        return ((ox + x) / b_width,
+                (oy + y) / b_height,
+                (ox + x + w) / b_width,
+                (oy + y + h) / b_height)
+
+    def region_roi(self, name: str, b_width: int, b_height: int):
+        """命名区域 → 截图归一化 ROI。"""
+        region = self.regions.get(name)
+        if region is None:
+            raise RegionConfigError(
+                f"区域「{name}」未配置或仍是占位值（-1），请在 regions 文件中填写")
+        return self.game_box_roi(region["box"], b_width, b_height,
+                                 region.get("screen", False))
 
 
 def load_map_file(path: str) -> dict:

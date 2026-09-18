@@ -33,12 +33,24 @@ class TemplateHit:
         return self.x + self.w // 2, self.y + self.h // 2
 
 
+_TEMPL_CACHE: dict[str, np.ndarray | None] = {}
+
+
 def load_template(path: str) -> np.ndarray | None:
-    """读取模板图（BGR）。文件不存在/损坏返回 None，由调用方决定如何报错。"""
+    """读取模板图（BGR），带内存缓存。文件不存在/损坏返回 None。"""
+    if path in _TEMPL_CACHE:
+        return _TEMPL_CACHE[path]
     templ = cv2.imread(path, cv2.IMREAD_COLOR)
     if templ is None or templ.size == 0:
+        _TEMPL_CACHE[path] = None
         return None
+    _TEMPL_CACHE[path] = templ
     return templ
+
+
+def clear_template_cache() -> None:
+    """清空模板缓存（调试/热加载时用）。"""
+    _TEMPL_CACHE.clear()
 
 
 def match_template(search_bgr: np.ndarray,

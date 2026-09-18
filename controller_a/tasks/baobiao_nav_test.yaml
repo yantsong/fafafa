@@ -46,20 +46,27 @@ tasks:
         settle: 0.6
         desc: "ALT+2 关闭世界地图"
 
-      - do: wait_npc
+      - do: wait_arrive_pos
+        region: hud_status
         map: maps/baobiao_map.json
         place: "阳关"
         npc: "秦溪山"
+        stable_secs: 2.5
+        coord_tol: 4
+        confirm_checks: 8
         timeout: 90
-        interval: 1.2
-        desc: "自动寻路中，等待秦溪山出现（OCR 名字 → 模板匹配）"
+        interval: 0.5
+        desc: "等待到达阳关（静止2.5s + 连续确认秦溪山；最多8轮约4s兜底）"
 
       - do: click_quest_npc
         map: maps/baobiao_map.json
         place: "阳关"
         npc: "秦溪山"
+        retry: 3
         settle: 0.8
-        desc: "点击秦溪山（OCR → 模板 → npc_box 三级兜底）"
+        search_secs: 10
+        search_interval: 0.5
+        desc: "点击秦溪山（搜索窗口10s内轮询识别，NPC走回画面即点，超时 npc_box 兜底）"
 
       - do: log
         text: "实测流程结束：寻路 + NPC 识别点击完成"
